@@ -1,42 +1,42 @@
 # surface-pro5-just-works
 
-Kamera-Fix und Verwaltungs-Suite für das **Microsoft Surface Pro 5 (Model 1796)** unter Linux – ohne den ganzen Microsoft-Mist, einfach und gut.
+Camera-fix und control-suite for the **Microsoft Surface Pro 5 (Model 1796)** under Linux – without the full Microsoft-trash, easy und working.
 
-> ⚠️ **Keine lange Testphase** – direkt aus der Entwicklung. Funktioniert auf Kernel 6.19 mit linux-surface.
+> ⚠️ **No long testphase** – straight from the development phase. Works with the `linux-surface` 6.19 kernel.
 
-## Das Problem
+## The Problem
 
-Das Surface Pro 5 hat drei Kameras (Frontkamera OV5693, Rückkamera OV8865, IR-Kamera OV7251) die unter Kernel 6.19 komplett kaputt sind. Zwei separate Kernel-Bugs verhindern dass libcamera die Kameras überhaupt findet.
+The Surface Pro 5 has three cameras (Front camera OV5693, Rear camera OV8865, IR camera OV7251) that are completely broken under the 6.19 kernel. Two separate kernel bugs prevent licamera from finding the cameras at all in the first place.
 
-## Die Lösung
+## The Solution
 
-Drei Fixes + ein selbstlernender On-Demand Daemon + GTK Switcher.
+Three fixes + a self-learning on-demand daemon + a GTK switcher.
 
-### Fix 1: dw9719 VCM Treiber (Kernel 6.19 Regression)
-Der Autofokus-Motor der Rückkamera hat in Kernel 6.19 keine `i2c_device_id` Tabelle mehr. Er blockiert dadurch den async Notifier und verhindert dass libcamera die Kameras findet.
+### Fix 1: dw9719 VCM driver (Kernel 6.19 regression)
+The autofocus-motor of the Rear camera lacks the `i2c_device_id` table in the 6.19 kernel. This blocks the async notifier and prevents libcamera from finding the cameras.
 
-**Symptom:** `cam --list` zeigt keine Kameras.
+**Symptom:** `cam --list` shows no camera.
 
-### Fix 2: int3472 avdd Quirk (Surface Pro 5 spezifisch)
-Der INT3472 ACPI-Treiber mappt GPIO 150/151 als "privacy-led" statt als `avdd` Spannungsversorgung. Die Kameras bekommen keine Spannung.
+### Fix 2: int3472 avdd quirk (Surface Pro 5 specific)
+The INT3472 ACPI-driver maps GPIO 150/151 as "privacy-led" instead of `avdd` power-management. The cameras are not powered.
 
-**Symptom:** `dmesg | grep avdd` zeigt `avdd not found`.
+**Symptom:** `dmesg | grep avdd` shows `avdd not found`.
 
-### Fix 3: v4l2loopback für Kernel 6.19
-Die DKMS-Version 0.12.7 ist inkompatibel (geänderte `v4l2_fh_add/del` API). Wird aus dem aktuellen GitHub-Source gebaut.
+### Fix 3: v4l2loopback for kernel 6.19
+The DKMS 0.12.7 version is not compatible (change in the `v4l2_fh_add/del` API). Thus it is built from the current GitHub source instead.
 
-### Daemon + Switcher
-- **Selbstlernend**: Erkennt automatisch welche Apps die Kamera nutzen
-- **On-Demand**: Kamera-LED nur an wenn wirklich genutzt
-- **GTK Switcher**: Kleines Fenster zum Wechseln zwischen Front- und Rückkamera
+### Daemon + switcher
+- **Self-learning**: automagically learns which apps use the camera
+- **On-demand**: the camera LED is only lit when the camera is actually used
+- **GTK switcher**: a small window to help switching between the front and rear cameras
 
-## Dateien
+## Code
 
-| Datei | Beschreibung |
+| File | Description |
 |-------|-------------|
-| `surface-kamera-daemon.c` | On-Demand Daemon |
-| `surface-kamera-switcher.py` | GTK Switcher-Fenster |
-| `install.sh` | Automatischer Installer |
+| `surface-camera-daemon.c` | On-demand daemon |
+| `surface-camera-switcher.py` | GTK switcher window |
+| `install.sh` | Automatic installer |
 
 ## Installation
 
@@ -47,52 +47,52 @@ chmod +x install.sh
 ./install.sh
 ```
 
-**Nicht als root ausführen!** Der Installer nutzt sudo intern.
+**Do not run as root !** The installer uses sudo internally.
 
-## Nach der Installation
+## Post-install
 
 ```bash
-# Kameras prüfen
+# Check the cameras
 cam --list
-# Sollte zeigen:
+# Should show:
 # 1: Internal back camera
 # 2: Internal front camera
 
-# Daemon Status
-systemctl --user status surface-kamera-daemon
+# Daemon status
+systemctl --user status surface-camera-daemon
 ```
 
-## Verwendung
+## Usage
 
-Der Daemon startet automatisch beim Login. Wenn OBS, Firefox, Zoom, Teams oder eine andere bekannte App startet:
+The dameon automatically starts with login. When OBS, Firefox, Zoom, Teams or another known app runs:
 
-1. Frontkamera Pipeline startet sofort auf `/dev/video20` ("Surface Kamera")
-2. Nach 2 Sekunden erscheint das **Switcher-Fenster**
-3. `[📷 Front]` / `[📸 Rück]` zum Wechseln
-4. `[🔄 Neu]` bei grünem Bild der Rückkamera
+1. The front camera pipeline starts immediately on `/dev/video20` ("Surface Camera")
+2. After 2 seconds, the **switcher window** appear
+3. Click `[📷 Front]` / `[📸 Rear]` to select the wanted camera
+4. Click `[🔄 Refresh]` if you get a green image from the rear camera
 
-### Neue Apps hinzufügen
+### Add new "known apps"
 
-Der Daemon lernt automatisch – einfach die App starten und die Kamera öffnen. Oder manuell:
+The daemonautomatically learns – simply start the app and run the camera. Or manually:
 
 ```bash
-echo "meine-app" | sudo tee -a /etc/surface-kamera/known-apps.conf
+echo "the-app-you-want-to-add" | sudo tee -a /etc/surface-camera/known-apps.conf
 ```
 
-## Getestete Konfiguration
+## Tested configuration
 
-- **Gerät**: Microsoft Surface Pro 5 (Model 1796)
+- **Device**: Microsoft Surface Pro 5 (Model 1796)
 - **CPU**: Intel Core m3-7Y30
 - **Kernel**: 6.19.8-surface-3 ([linux-surface](https://github.com/linux-surface/linux-surface))
 - **libcamera**: 0.6.0
-- **Getestet mit**: OBS, Firefox, Cheese
+- **Tested with**: OBS, Firefox, Cheese
 
-## Bekannte Einschränkungen
+## Known bugs
 
-- **Grünes Bild** bei der Rückkamera: Fehlende ISP Tuning-Kalibrierung für den OV8865. `[🔄 Neu]` hilft.
-- **IR-Kamera**: Nicht unterstützt.
-- **Kernel 6.18**: Funktioniert auch, aber ohne Daemon-Integration nötig.
+- **Green image** when using the rear camera: missing ISP tuning calibration for the OV8865. `[🔄 Refresh]` helps.
+- **IR camera**: not supported.
+- **Kernel 6.18**: also works, without needing the daemon integration.
 
-## Lizenz
+## License
 
 GPL v2
