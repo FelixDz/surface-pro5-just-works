@@ -1,8 +1,8 @@
 /*
- * surface-kamera-daemon v9
- * Basis: v6 (stabil, selbstlernend)
- * Neu: Switcher Fenster wird gestartet NACHDEM Pipeline 2s stabil laeuft
- * Kamerawechsel via /tmp/surface-kamera-cmd
+ * surface-camera-daemon v9
+ * Base: v6 (stable, self-learning)
+ * New: switcher window starts AFTER a 2s stable pipeline execution
+ * Camera switch operated via /tmp/surface-camera-cmd
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,16 +19,16 @@
 #include <syslog.h>
 
 #define VIDEO_DEVICE     "/dev/video20"
-#define CMD_FILE         "/tmp/surface-kamera-cmd"
-#define SWITCHER         "/home/sd/.local/bin/surface-kamera-switcher.py"
+#define CMD_FILE         "/tmp/surface-camera-cmd"
+#define SWITCHER         "/home/sd/.local/bin/surface-camera-switcher.py"
 #define POLL_MS          500
 #define STOP_DELAY_SEC   5
-#define CONFIG_DIR       "/etc/surface-kamera"
-#define CONFIG_FILE      "/etc/surface-kamera/known-apps.conf"
+#define CONFIG_DIR       "/etc/surface-camera"
+#define CONFIG_FILE      "/etc/surface-camera/known-apps.conf"
 #define MAX_APPS         64
 #define MAX_NAME         64
 
-/* Frontkamera (OV5693) = camera-name=1 */
+/* Front camera (OV5693) = camera-name=1 */
 static const char *GST_FRONT[] = {
     "gst-launch-1.0","libcamerasrc","camera-name=1",
     "!","video/x-raw,width=1280,height=720,framerate=30/1,format=NV12",
@@ -37,7 +37,7 @@ static const char *GST_FRONT[] = {
     "!","v4l2sink","device=/dev/video20","sync=false",NULL
 };
 
-/* Rueckkamera (OV8865) = camera-name=0 */
+/* Rear camera (OV8865) = camera-name=0 */
 static const char *GST_REAR[] = {
     "gst-launch-1.0","libcamerasrc","camera-name=0",
     "!","video/x-raw,width=1280,height=720,framerate=30/1,format=NV12",
@@ -48,14 +48,14 @@ static const char *GST_REAR[] = {
 
 static const char *ALWAYS_IGNORED[] = {
     "wireplumber","pipewire","pipewire-pulse","gst-launch-1.0",
-    "surface-kamera","python3",NULL
+    "surface-camera","python3",NULL
 };
 
 static char known_apps[MAX_APPS][MAX_NAME];
 static int  n_known      = 0;
 static pid_t pipeline_pid = -1;
 static pid_t switcher_pid = -1;
-static int   aktive_kamera = 0; /* 0=front 1=rear */
+static int   active_camera = 0; /* 0=front 1=rear */
 static time_t idle_since  = 0;
 static volatile int running = 1;
 
@@ -71,7 +71,7 @@ static void config_load(void) {
             strncpy(known_apps[n_known++], line, MAX_NAME-1);
     }
     fclose(f);
-    syslog(LOG_INFO, "Kamera: %d bekannte Apps geladen", n_known);
+    syslog(LOG_INFO, "[Camera] %d known apps loaded", n_known);
 }
 
 static void config_add_app(const char *name) {
@@ -79,7 +79,7 @@ static void config_add_app(const char *name) {
         if (strcmp(known_apps[i], name) == 0) return;
     if (n_known >= MAX_APPS) return;
     strncpy(known_apps[n_known++], name, MAX_NAME-1);
-    syslog(LOG_INFO, "Kamera: Neue App gelernt: %s", name);
+    syslog(LOG_INFO, "[Camera] New app discovered: %s", name);
     mkdir(CONFIG_DIR, 0755);
     FILE *f = fopen(CONFIG_FILE, "a");
     if (f) { fprintf(f, "%s\n", name); fclose(f); }
@@ -87,7 +87,7 @@ static void config_add_app(const char *name) {
 
 static void pipeline_stop(void) {
     if (pipeline_pid <= 0) return;
-    syslog(LOG_INFO, "Kamera: Stoppe Pipeline...");
+    syslog(LOG_INFO, "[Camera] Stopping pipeline…");
     kill(pipeline_pid, SIGTERM);
     for (int i = 0; i < 30; i++) {
         usleep(100000);
@@ -100,11 +100,11 @@ static void pipeline_stop(void) {
     pipeline_pid = -1;
 }
 
-static void pipeline_start(int kamera) {
+static void pipeline_start(int camera) {
     pipeline_stop();
-    aktive_kamera = kamera;
-    const char **argv = (kamera == 0) ? GST_FRONT : GST_REAR;
-    const char *name  = (kamera == 0) ? "Front" : "Rear";
+    active_camera = camera;
+    const char **argv = (camera == 0) ? GST_FRONT : GST_REAR;
+    const char *name  = (camera == 0) ? "Front" : "Rear";
     pid_t pid = fork();
     if (pid < 0) { syslog(LOG_ERR, "fork: %s", strerror(errno)); return; }
     if (pid == 0) {
@@ -114,7 +114,7 @@ static void pipeline_start(int kamera) {
         _exit(1);
     }
     pipeline_pid = pid;
-    syslog(LOG_INFO, "Kamera: Pipeline %s PID=%d", name, (int)pid);
+    syslog(LOG_INFO, "[Camera] Pipeline %s PID=%d", name, (int)pid);
 }
 
 static void switcher_stop(void) {
@@ -134,11 +134,11 @@ static void switcher_start(void) {
         int dn = open("/dev/null", O_WRONLY);
         if (dn >= 0) { dup2(dn, 2); close(dn); }
         execlp("python3", "python3", SWITCHER,
-               aktive_kamera == 0 ? "front" : "rear", NULL);
+               active_camera == 0 ? "front" : "rear", NULL);
         _exit(1);
     }
     switcher_pid = pid;
-    syslog(LOG_INFO, "Kamera: Switcher PID=%d", (int)pid);
+    syslog(LOG_INFO, "[Camera] Switcher PID=%d", (int)pid);
 }
 
 static int read_cmd(void) {
@@ -157,7 +157,7 @@ static void reap(void) {
     int st; pid_t p;
     while ((p = waitpid(-1, &st, WNOHANG)) > 0) {
         if (p == pipeline_pid) {
-            syslog(LOG_WARNING, "Kamera: Pipeline unerwartet beendet");
+            syslog(LOG_WARNING, "[Camera] Unexpected pipeline stop");
             pipeline_pid = -1;
         }
         if (p == switcher_pid) switcher_pid = -1;
@@ -223,7 +223,7 @@ static int foreign_user_exists(char *found_name, size_t name_len) {
             struct stat st;
             if (stat(fdpath, &st) == 0 && st.st_rdev == target.st_rdev
                 && S_ISCHR(st.st_mode)) {
-                syslog(LOG_INFO, "Kamera: genutzt von '%s' (PID=%ld)", name, pid);
+                syslog(LOG_INFO, "[Camera] Used by '%s' (PID=%ld)", name, pid);
                 if (found_name) strncpy(found_name, name, name_len-1);
                 found = 1; break;
             }
@@ -235,73 +235,73 @@ static int foreign_user_exists(char *found_name, size_t name_len) {
 }
 
 int main(void) {
-    openlog("surface-kamera", LOG_PID|LOG_CONS, LOG_DAEMON);
-    syslog(LOG_INFO, "surface-kamera-daemon v9 gestartet");
+    openlog("surface-camera", LOG_PID|LOG_CONS, LOG_DAEMON);
+    syslog(LOG_INFO, "surface-camera-daemon v9 started");
     signal(SIGTERM, sig_handler);
     signal(SIGINT,  sig_handler);
     config_load();
 
     while (running && access(VIDEO_DEVICE, F_OK) != 0) {
-        syslog(LOG_INFO, "Warte auf %s...", VIDEO_DEVICE);
+        syslog(LOG_INFO, "Waiting for %s…", VIDEO_DEVICE);
         sleep(2);
     }
-    syslog(LOG_INFO, "Kamera: Bereit. %d bekannte Apps.", n_known);
+    syslog(LOG_INFO, "[Camera] Ready. %d knows apps.", n_known);
 
     time_t pipeline_stable_since = 0;
 
     while (running) {
         reap();
 
-        /* === 1. Kamerawechsel via CMD Datei === */
+        /* === 1. Camera selection via CMD data === */
         int cmd = read_cmd();
-        if (cmd == 0 && aktive_kamera != 0) {
-            syslog(LOG_INFO, "Kamera: Wechsel zu Frontkamera");
+        if (cmd == 0 && active_camera != 0) {
+            syslog(LOG_INFO, "[Camera] Switching to front camera");
             pipeline_start(0);
             pipeline_stable_since = 0;
-        } else if (cmd == 1 && aktive_kamera != 1) {
-            syslog(LOG_INFO, "Kamera: Wechsel zu Rueckkamera");
+        } else if (cmd == 1 && active_camera != 1) {
+            syslog(LOG_INFO, "[Camera] Switching to rear camera");
             pipeline_start(1);
             pipeline_stable_since = 0;
         }
 
-        /* === 2. Bekannte App erkannt -> Pipeline starten === */
+        /* === 2. Known app detected -> start the pipeline === */
         int known_running = known_app_running();
         if (known_running && pipeline_pid <= 0) {
-            syslog(LOG_INFO, "Kamera: Bekannte App erkannt, starte Pipeline...");
-            pipeline_start(0); /* immer mit Front starten */
+            syslog(LOG_INFO, "[Camera] Known app detected, starting pipeline…");
+            pipeline_start(0); /* always start with the front camera */
             pipeline_stable_since = 0;
             idle_since = 0;
         }
 
-        /* === 3. Stabilitaets-Timer: nach 2s -> Switcher starten === */
+        /* === 3. Stability timer: start the switcher after 2s === */
         if (pipeline_pid > 0) {
             if (pipeline_stable_since == 0)
                 pipeline_stable_since = time(NULL);
             else if (switcher_pid <= 0 &&
                      (time(NULL) - pipeline_stable_since) >= 2) {
-                syslog(LOG_INFO, "Kamera: Pipeline stabil, starte Switcher...");
+                syslog(LOG_INFO, "[Camera] Pipeline is stable, starting the switcher…");
                 switcher_start();
             }
         } else {
             pipeline_stable_since = 0;
         }
 
-        /* === 4. Fremde App lernen === */
+        /* === 4. Unknown app learning === */
         char user_name[MAX_NAME] = {0};
         int in_use = foreign_user_exists(user_name, sizeof(user_name));
         if (in_use && strlen(user_name) > 0 && !is_always_ignored(user_name))
             config_add_app(user_name);
 
-        /* === 5. Kein Consumer -> stoppen === */
+        /* === 5. Stop if no usage is detected === */
         if (!known_running && !in_use) {
             if (pipeline_pid > 0 || switcher_pid > 0) {
                 if (idle_since == 0) {
                     idle_since = time(NULL);
-                    syslog(LOG_INFO, "Kamera: Kein Consumer, warte %ds...", STOP_DELAY_SEC);
+                    syslog(LOG_INFO, "[Camera] No usage, waiting %ds…", STOP_DELAY_SEC);
                 } else if ((time(NULL) - idle_since) >= STOP_DELAY_SEC) {
                     pipeline_stop();
                     switcher_stop();
-                    aktive_kamera = 0;
+                    active_camera = 0;
                     pipeline_stable_since = 0;
                     idle_since = 0;
                 }
