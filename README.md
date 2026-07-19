@@ -73,7 +73,7 @@ The dameon automatically starts with login. When OBS, Firefox, Zoom, Teams or an
 
 ### Add new "known apps"
 
-The daemonautomatically learns – simply start the app and run the camera. Or manually:
+The daemon automatically learns – simply start the app and run the camera. Or manually:
 
 ```bash
 echo "the-app-you-want-to-add" | sudo tee -a /etc/surface-camera/known-apps.conf
