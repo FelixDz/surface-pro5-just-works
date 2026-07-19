@@ -67,7 +67,7 @@ systemctl --user status surface-camera-daemon
 The dameon automatically starts with login. When OBS, Firefox, Zoom, Teams or another known app runs:
 
 1. The front camera pipeline starts immediately on `/dev/video20` ("Surface Camera")
-2. After 2 seconds, the **switcher window** appear
+2. After 2 seconds, the **switcher window** appears
 3. Click `[📷 Front]` / `[📸 Rear]` to select the wanted camera
 4. Click `[🔄 Refresh]` if you get a green image from the rear camera
 
