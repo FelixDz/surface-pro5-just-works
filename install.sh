@@ -80,7 +80,7 @@ content = content.replace(
 )
 with open('dw9719.c', 'w') as f:
     f.write(content)
-print("dw9719.c gepatcht")
+print("dw9719.c patched")
 PYEOF
 fi
 
