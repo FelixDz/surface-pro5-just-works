@@ -44,7 +44,7 @@ for pkg in gcc make gstreamer1.0-tools gstreamer1.0-plugins-good \
            python3-gi; do
     if ! dpkg -l "$pkg" &>/dev/null; then
         warn "$pkg is missing – Installing…"
-        sudo apt install -y "$pkg" || pacman -S "$pkg" || err "Could not install $pkg, please intall manually"
+        sudo apt install -y "$pkg" || err "Could not install $pkg, please install manually"
     fi
 done
 
